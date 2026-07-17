@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import pickle
 import matplotlib.pyplot as plt
+from database import add_user, login_user
 
 
 # -----------------------------
@@ -24,6 +25,13 @@ with open("indices.pkl", "rb") as f:
 if "recommendations" not in st.session_state:
     st.session_state["recommendations"] = None
 
+# Login session
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
+
+if "username" not in st.session_state:
+    st.session_state["username"] = ""
+
 
 # -----------------------------
 # Recommendation Function
@@ -31,7 +39,7 @@ if "recommendations" not in st.session_state:
 
 def recommend_products(search_text):
 
-    matches = df[df["name"].str.contains(search_text, case=False, na=False)]
+    matches = df[df["name"] == search_text]
 
     if matches.empty:
         return None
@@ -78,9 +86,82 @@ st.sidebar.info("""
 st.sidebar.success(f"Total Products: {len(df)}")
 
 # -----------------------------
+# Login / Signup
+# -----------------------------
+
+
+if not st.session_state["logged_in"]:
+
+    st.title("🔐 AI AC Recommendation System")
+
+    menu = st.radio(
+        "Select Option",
+        ["Login", "Signup"],
+        horizontal=True
+    )
+
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if menu == "Signup":
+
+        confirm_password = st.text_input(
+            "Confirm Password",
+            type="password"
+        )
+
+        if st.button("Create Account"):
+
+            if username.strip() == "" or password.strip() == "":
+                st.error("Username and Password cannot be empty.")
+
+            elif password != confirm_password:
+                st.error("❌ Passwords do not match.")
+
+            elif add_user(username, password):
+                st.success("✅ Account created successfully!")
+
+            else:
+                st.error("❌ Username already exists!")
+
+    else:
+
+        if st.button("Login"):
+
+            user = login_user(username, password)
+
+            if user:
+                st.session_state["logged_in"] = True
+                st.session_state["username"] = username
+                st.rerun()
+
+            else:
+                st.error("❌ Invalid Username or Password")
+
+    st.stop()
+
+# -----------------------------
 # Main UI
 # -----------------------------
 st.title("🤖 AI-Based Smart Air Conditioner Recommendation System")
+
+# -----------------------------
+# Welcome User + Logout
+# -----------------------------
+
+col1, col2 = st.columns([5, 1])
+
+with col1:
+    st.success(f"👋 Welcome, {st.session_state['username']}")
+
+with col2:
+    if st.button("🚪 Logout"):
+
+        st.session_state["logged_in"] = False
+        st.session_state["username"] = ""
+        st.session_state["recommendations"] = None
+
+        st.rerun()
 
 st.markdown("""
 Welcome to the **AI-Based Smart Air Conditioner Recommendation System**.
@@ -96,19 +177,43 @@ st.info(
     "Recommendations may include different brands with similar specifications."
 )
 
-product = st.text_input("🔍 Enter Product Name")
+search_text = st.text_input("🔍 Search AC Brand or Product")
+
+# Get matching products
+suggestions = []
+
+if search_text:
+    suggestions = (
+        df[df["name"].str.contains(search_text, case=False, na=False)]["name"]
+        .drop_duplicates()
+        .head(10)
+        .tolist()
+    )
+
+selected_product = ""
+
+if suggestions:
+    selected_product = st.selectbox(
+        "💡 Select a Product",
+        suggestions
+    )
 
 if st.button("Recommend"):
 
-    recommendations = recommend_products(product)
-
-    if recommendations is None:
-        st.error("No product found.")
-        st.session_state["recommendations"] = None
+    if selected_product == "":
+        st.warning("⚠️ Please select a product from the suggestions.")
+        st.write("Selected Product:", selected_product)
 
     else:
-        st.session_state["recommendations"] = recommendations
 
+        recommendations = recommend_products(selected_product)
+
+        if recommendations is None:
+            st.error("No product found.")
+            st.session_state["recommendations"] = None
+
+        else:
+            st.session_state["recommendations"] = recommendations
 
 if st.session_state["recommendations"] is not None:
 
